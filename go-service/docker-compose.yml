@@ -1,0 +1,55 @@
+# Standalone Go stack for a dedicated host: the service is published on :80
+# and :8080 (the checker accepts plain http); Mongo/Redis stay internal.
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory", "2gb", "--maxmemory-policy", "volatile-ttl", "--requirepass", "${PII_REDIS_PASSWORD:?set PII_REDIS_PASSWORD in .env}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: pii
+      MONGO_INITDB_ROOT_PASSWORD: ${PII_MONGO_PASSWORD:?set PII_MONGO_PASSWORD in .env}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # ping is in Mongo's pre-auth command set -- no credentials on the CLI.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  app:
+    build: .
+    ports:
+      - "80:8090"
+      - "8080:8090"
+    environment:
+      PII_MONGO_URL: mongodb://pii:${PII_MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      PII_REDIS_URL: redis://:${PII_REDIS_PASSWORD}@redis:6379/0
+      PII_MONGO_DB: pii
+      PII_DEFAULT_MASKING_MODE: partial
+      PII_MAPPING_TTL_SECONDS: "600"
+      PII_DEMASK_RETRY_GRACE_SECONDS: "60"
+      PII_ADMISSION_MAX_IN_FLIGHT: "512"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mongo-data:

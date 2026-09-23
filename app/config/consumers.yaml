@@ -1,0 +1,27 @@
+# Per-consumer policy. The hackathon /process endpoint doesn't send a consumer_id,
+# so it always resolves to `default`. Internal/product callers pass consumer_id and
+# get their own entry under `consumers`.
+default:
+  enabled: true
+  demask: true
+  masking_mode: partial
+  # mask_types omitted => all supported types are masked
+
+consumers:
+  chat-assistant:
+    enabled: true
+    demask: true
+    masking_mode: synthetic
+    mask_types:
+      - FULL_NAME
+      - PHONE
+      - EMAIL
+      - PASSPORT
+      - CARD_NUMBER
+      - CVV
+      - PIN
+
+  analytics-pipeline:
+    enabled: true
+    demask: false
+    masking_mode: token

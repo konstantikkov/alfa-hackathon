@@ -1,0 +1,5 @@
+pii-security-solution
+branch: feature/go-rewrite
+commit: adf779a
+packaged: 2026-09-23T15:10Z
+contents: python reference service (app/) + go hot core (go-service/) + tools + tests

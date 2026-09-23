@@ -1,0 +1,44 @@
+# Redis and Mongo are reachable only on the internal compose network -- the
+# app addresses them by service name; publishing datastore ports to the host
+# is an avoidable attack surface.
+# Credentials come exclusively from the environment (.env / secrets manager);
+# see .env.example. No literal passwords live in this file.
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--requirepass", "${PII_REDIS_PASSWORD:?set PII_REDIS_PASSWORD in .env}"]
+    environment:
+      # redis-cli reads REDISCLI_AUTH; the password never appears on a command line.
+      REDISCLI_AUTH: ${PII_REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  mongo:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: pii
+      MONGO_INITDB_ROOT_PASSWORD: ${PII_MONGO_PASSWORD:?set PII_MONGO_PASSWORD in .env}
+    healthcheck:
+      # ping is in Mongo's pre-auth command set -- no credentials on the CLI.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PII_REDIS_URL: redis://:${PII_REDIS_PASSWORD}@redis:6379/0
+      PII_MONGO_URL: mongodb://pii:${PII_MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      PII_DEFAULT_MASKING_MODE: partial
+      PII_LOG_LEVEL: INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PII Security Proxy — Inspector</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1f232c; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #4f8cff; --ok: #35c48f;
+    --mask: #ff5d7a; --keep: #35c48f; --uncertain: #f5b942;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.4;
+  }
+  header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+  section.card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 20px;
+  }
+  section.card h2 { font-size: 15px; margin: 0 0 14px; color: var(--text); }
+  section.card h2 .step { color: var(--accent); margin-right: 6px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  textarea, input[type=text] {
+    width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  .row > div { flex: 1; min-width: 160px; }
+  select { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 6px;
+    padding: 9px 16px; font-size: 13px; cursor: pointer; margin-top: 10px; margin-right: 8px;
+  }
+  button.secondary { background: var(--panel2); border: 1px solid var(--border); color: var(--text); }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .examples { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .examples button { margin: 0; font-size: 12px; padding: 5px 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.MASK { background: rgba(255,93,122,.15); color: var(--mask); }
+  .badge.KEEP { background: rgba(53,196,143,.15); color: var(--keep); }
+  .badge.UNCERTAIN { background: rgba(245,185,66,.15); color: var(--uncertain); }
+  .mono { font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  pre.output {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; margin: 6px 0;
+  }
+  .highlight-mask { background: rgba(255,93,122,.25); border-radius: 3px; padding: 0 2px; }
+  .highlight-keep { background: rgba(53,196,143,.18); border-radius: 3px; padding: 0 2px; }
+  .stage { margin-top: 18px; }
+  .stage-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+  .result-ok { color: var(--ok); font-weight: 600; }
+  .result-bad { color: var(--mask); font-weight: 600; }
+  .result-na { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 12.5px; font-style: italic; }
+  .log-entry { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 12.5px; }
+  .log-entry .dir { font-weight: 600; }
+  .log-entry .dir.mask { color: var(--mask); }
+  .log-entry .dir.demask { color: var(--keep); }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔒 PII Security Proxy — Inspector</h1>
+  <span class="sub">Пошаговая проверка pipeline: detection → decision → masking → demasking</span>
+</header>
+
+<main>
+
+  <section class="card">
+    <h2><span class="step">①-④</span>Pipeline Inspector</h2>
+    <div class="examples">
+      <button class="secondary" data-ex="pushkin">Пушкин (public, KEEP)</button>
+      <button class="secondary" data-ex="pushkin_private">Пушкин + паспорт (MASK)</button>
+      <button class="secondary" data-ex="client">Клиент + телефон + ИНН</button>
+      <button class="secondary" data-ex="pin_card">ПИН + карта (relationship rule)</button>
+      <button class="secondary" data-ex="pin_alone">ПИН без карты (KEEP)</button>
+      <button class="secondary" data-ex="repeated">Одно лицо, два падежа</button>
+    </div>
+    <label>Текст для анализа</label>
+    <textarea id="payload">Клиент Иванов Иван Иванович, паспорт 0000 000000, телефон +7 900 000-00-00, обратился в банк за ипотечным кредитом.</textarea>
+    <div class="row">
+      <div>
+        <label>Режим маскирования</label>
+        <select id="mode">
+          <option value="partial">partial (хакатон default)</option>
+          <option value="token">token</option>
+          <option value="synthetic">synthetic</option>
+        </select>
+      </div>
+      <div>
+        <label>Consumer ID (опционально)</label>
+        <input type="text" id="consumerId" placeholder="по умолчанию: default">
+      </div>
+      <div style="flex:0;">
+        <button id="analyzeBtn">Анализировать →</button>
+      </div>
+    </div>
+
+    <div id="results" style="display:none;">
+      <div class="stage">
+        <div class="stage-title">① Обнаруженные кандидаты (Candidate Detection)</div>
+        <div id="candidatesTable"></div>
+      </div>
+      <div class="stage">
+        <div class="stage-title">② Privacy Decision (MASK / KEEP) и причины</div>
+        <div id="decisionsTable"></div>
+      </div>
+      <div class="stage">
+        <div class="stage-title">③ Результат маскирования</div>
+        <pre class="output" id="maskedOut"></pre>
+        <div id="mappingsTable"></div>
+      </div>
+      <div class="stage">
+        <div class="stage-title">④ Демаскирование (round-trip проверка)</div>
+        <pre class="output" id="demaskedOut"></pre>
+        <div id="roundTripStatus"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>🔁 Контракт <code>/process</code> (реальный хакатонный эндпоинт)</h2>
+    <p class="sub" style="margin-top:-6px">Направление (mask/demask) определяется состоянием <code>payload_id</code>, а не полем запроса — как в спецификации.</p>
+    <div class="row">
+      <div>
+        <label>payload_id</label>
+        <input type="text" id="payloadId" value="">
+      </div>
+      <div style="flex:0;">
+        <button class="secondary" id="newIdBtn">Новый ID</button>
+      </div>
+    </div>
+    <label>Payload (для первого запроса — исходный текст; после маскирования сюда автоматически подставится маска)</label>
+    <textarea id="processPayload">Клиент Соколова Мария Петровна, email maria.sokolova@example.com</textarea>
+    <button id="sendBtn">Отправить в /process</button>
+    <button class="secondary" id="clearLogBtn">Очистить лог</button>
+    <div id="processLog" style="margin-top:10px;"></div>
+  </section>
+
+</main>
+
+<footer>PII Security Proxy · локальный pipeline, без внешних LLM для определения ПДн</footer>
+
+<script>
+const EXAMPLES = {
+  pushkin: "Александр Сергеевич Пушкин написал «Руслан и Людмила».",
+  pushkin_private: "Поэт Александр Сергеевич Пушкин, паспорт 0000 000000, хочет взять кредит.",
+  client: "Клиент Иванов Иван Иванович обратился в банк. Телефон +7 900 000-00-00, ИНН 0000000000.",
+  pin_card: "Номер карты клиента 0000 0000 0000 0000, ПИН-код 0000.",
+  pin_alone: "ПИН-код пользователя: 0000. Номер карты в сообщении отсутствует.",
+  repeated: "С Ивановым Иваном Ивановичем обсудили заявку. Позже письмо отправили Иванову Ивану Ивановичу.",
+};
+
+document.querySelectorAll('[data-ex]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('payload').value = EXAMPLES[btn.dataset.ex];
+  });
+});
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderCandidates(candidates) {
+  if (!candidates.length) return '<div class="empty">Кандидатов не найдено.</div>';
+  let rows = candidates.map(c => `
+    <tr>
+      <td>${escapeHtml(c.type)}</td>
+      <td class="mono">${escapeHtml(c.value)}</td>
+      <td>${c.start}–${c.end}</td>
+      <td>${escapeHtml(c.detector)}</td>
+      <td>${c.confidence.toFixed(2)}</td>
+    </tr>`).join('');
+  return `<table><thead><tr><th>Тип</th><th>Значение</th><th>Позиция</th><th>Детектор</th><th>Confidence</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderDecisions(decisions) {
+  if (!decisions.length) return '<div class="empty">Нет кандидатов для оценки.</div>';
+  let rows = decisions.map(d => `
+    <tr>
+      <td>${escapeHtml(d.type)}</td>
+      <td class="mono">${escapeHtml(d.value)}</td>
+      <td><span class="badge ${d.decision}">${d.decision}</span></td>
+      <td>${d.confidence.toFixed(2)}</td>
+      <td class="mono">${d.reasons.map(escapeHtml).join(', ') || '—'}</td>
+    </tr>`).join('');
+  return `<table><thead><tr><th>Тип</th><th>Значение</th><th>Решение</th><th>Conf.</th><th>Причины</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderMappings(mappings) {
+  if (!mappings.length) return '<div class="empty">Нет замаскированных сущностей (mapping vault пуст для этого текста).</div>';
+  let rows = mappings.map(m => `
+    <tr>
+      <td>${escapeHtml(m.entity_id)}</td>
+      <td>${escapeHtml(m.type)}</td>
+      <td class="mono">${escapeHtml(m.original)}</td>
+      <td class="mono">${escapeHtml(m.token)}</td>
+      <td class="mono">${escapeHtml(m.synthetic)}</td>
+      <td class="mono">${escapeHtml(m.partial)}</td>
+    </tr>`).join('');
+  return `<div class="stage-title" style="margin-top:10px;font-size:12px;">Mapping Vault (записи для демаскирования)</div>
+    <table><thead><tr><th>entity_id</th><th>Тип</th><th>Original</th><th>Token</th><th>Synthetic</th><th>Partial</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+document.getElementById('analyzeBtn').addEventListener('click', async () => {
+  const payload = document.getElementById('payload').value;
+  const mode = document.getElementById('mode').value;
+  const consumerIdRaw = document.getElementById('consumerId').value.trim();
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; btn.textContent = 'Анализирую…';
+  try {
+    const resp = await fetch('/inspect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({payload, mode, consumer_id: consumerIdRaw || null}),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({detail: resp.statusText}));
+      alert('Ошибка: ' + (err.detail || resp.status));
+      return;
+    }
+    const data = await resp.json();
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('candidatesTable').innerHTML = renderCandidates(data.candidates);
+    document.getElementById('decisionsTable').innerHTML = renderDecisions(data.decisions);
+    document.getElementById('maskedOut').textContent = data.masked_text;
+    document.getElementById('mappingsTable').innerHTML = renderMappings(data.mappings);
+    document.getElementById('demaskedOut').textContent = data.demasked_text;
+    const status = document.getElementById('roundTripStatus');
+    if (data.round_trip_ok === null) {
+      status.innerHTML = '<span class="result-na">N/A — partial-режим необратим посимвольно; реальное восстановление проверяется через /process (исходный текст хранится в Mapping Vault).</span>';
+    } else if (data.round_trip_ok) {
+      status.innerHTML = '<span class="result-ok">✓ Совпадает с исходным текстом</span>';
+    } else {
+      status.innerHTML = '<span class="result-bad">✗ НЕ совпадает с исходным текстом</span>';
+    }
+  } catch (e) {
+    alert('Сетевая ошибка: ' + e);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Анализировать →';
+  }
+});
+
+// --- /process contract tester ---
+
+function randomId() {
+  return 'ui-' + Math.random().toString(36).slice(2, 10);
+}
+document.getElementById('payloadId').value = randomId();
+document.getElementById('newIdBtn').addEventListener('click', () => {
+  document.getElementById('payloadId').value = randomId();
+  document.getElementById('processLog').innerHTML = '';
+});
+document.getElementById('clearLogBtn').addEventListener('click', () => {
+  document.getElementById('processLog').innerHTML = '';
+});
+
+document.getElementById('sendBtn').addEventListener('click', async () => {
+  const payload_id = document.getElementById('payloadId').value;
+  const payload = document.getElementById('processPayload').value;
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/process', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({payload, payload_id}),
+    });
+    const data = await resp.json();
+    const log = document.getElementById('processLog');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `
+      <div><span class="mono">payload_id=${escapeHtml(payload_id)}</span></div>
+      <div><b>→ request:</b> <span class="mono">${escapeHtml(payload)}</span></div>
+      <div><b>← response (HTTP ${resp.status}):</b> <span class="mono">${escapeHtml(JSON.stringify(data))}</span></div>`;
+    log.prepend(entry);
+    if (resp.ok && data.result) {
+      document.getElementById('processPayload').value = data.result;
+    }
+  } catch (e) {
+    alert('Сетевая ошибка: ' + e);
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+
+</body>
+</html>
